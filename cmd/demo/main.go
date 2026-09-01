@@ -7,20 +7,23 @@ import (
 	"log"
 	"os"
 
-	"github.com/snookish/ledger/internal/wal"
+	"github.com/snookish/ledger"
 )
 
 func main() {
 	logger := log.New(os.Stdout, "", log.LstdFlags|log.Lmicroseconds)
 	ctx := context.Background()
-	dir := os.Getenv("WAL_DIR")
+	dir := os.Getenv("LEDGER_DIR")
+	if dir == "" {
+		dir = os.Getenv("WAL_DIR")
+	}
 	if dir == "" {
 		dir = "/tmp/ledger-demo"
 	}
 
-	logger.Printf("WAL dir: %s", dir)
+	logger.Printf("ledger dir: %s", dir)
 
-	w, err := wal.Open(ctx, wal.WithDir(dir))
+	w, err := ledger.Open(ctx, ledger.WithDir(dir))
 	if err != nil {
 		logger.Fatalf("open failed: %v", err)
 	}
@@ -28,7 +31,7 @@ func main() {
 		if err := w.Close(ctx); err != nil {
 			logger.Printf("close failed: %v", err)
 		} else {
-			logger.Printf("WAL closed")
+			logger.Printf("ledger closed")
 		}
 	}()
 
@@ -62,7 +65,7 @@ func main() {
 	rotationDir := dir + "-rotate"
 	_ = os.RemoveAll(rotationDir)
 
-	rotationWal, err := wal.Open(ctx, wal.WithDir(rotationDir), wal.WithSegmentSize(64<<10))
+	rotationWal, err := ledger.Open(ctx, ledger.WithDir(rotationDir), ledger.WithSegmentSize(64<<10))
 	if err != nil {
 		logger.Fatalf("open rotation wal failed: %v", err)
 	}

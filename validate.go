@@ -1,4 +1,4 @@
-package wal
+package ledger
 
 import (
 	"errors"
@@ -8,7 +8,7 @@ import (
 )
 
 // Extra errors for validation.
-var ErrBadDir = errors.New("wal: bad dir")
+var ErrBadDir = errors.New("ledger: bad dir")
 
 // validateDir checks the dir before we try to use it.
 func validateDir(dir string) error {

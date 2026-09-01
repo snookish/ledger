@@ -1,4 +1,4 @@
-package wal
+package ledger
 
 const (
 	DefaultSegmentSize = 64 << 20          // DefaultSegmentSize is the size that triggers a new segment.
@@ -42,6 +42,11 @@ func defaultOptions() Options {
 		SegmentSize: DefaultSegmentSize,
 		Syncer:      defaultSyncer(),
 	}
+}
+
+// Validate checks the options before Open uses them.
+func (options Options) Validate() error {
+	return validateDir(options.Dir)
 }
 
 func applyOptions(opts ...Option) Options {

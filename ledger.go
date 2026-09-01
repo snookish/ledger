@@ -1,29 +1,29 @@
-package wal
+package ledger
 
 import (
 	"context"
 	"errors"
 	"os"
-	"path/filepath"
 	"sync"
 )
 
 // Common errors for callers to check with errors.Is.
 var (
-	ErrClosed  = errors.New("wal: closed")
-	ErrCorrupt = errors.New("wal: corrupt record")
+	ErrClosed  = errors.New("ledger: closed")
+	ErrCorrupt = errors.New("ledger: corrupt record")
 )
 
 // WAL is the log. It owns the segment files in dir.
 type WAL struct {
-	dir         string
-	opts        Options
-	mu          sync.Mutex
-	file        *os.File
-	blockOffset int
-	curSegment  int
-	lsn         uint64
-	closed      bool
+	dir        string
+	opts       Options
+	mu         sync.Mutex
+	file       *os.File
+	writer     *blockWriter
+	manager    *segmentManager
+	curSegment int
+	lsn        uint64
+	closed     bool
 }
 
 // Open creates or reopens the log. Dir defaults to /var/lib/ledger.
@@ -33,62 +33,28 @@ func Open(ctx context.Context, opts ...Option) (*WAL, error) {
 	}
 
 	options := applyOptions(opts...)
-	dir := options.Dir
-
-	if err := validateDir(dir); err != nil {
+	if err := options.Validate(); err != nil {
 		return nil, err
 	}
+	dir := options.Dir
 
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
 
-	segments, err := listSegments(dir)
+	manager := newSegmentManager(dir)
+	file, segmentNum, blockOffset, err := manager.openLast()
 	if err != nil {
 		return nil, err
 	}
 
-	var (
-		segmentNum  int
-		blockOffset int
-		file        *os.File
-	)
-
-	if len(segments) == 0 {
-		segmentNum = 1
-		file, err = openSegmentForAppend(dir, segmentNum)
-		if err != nil {
-			return nil, err
-		}
-		blockOffset = 0
-	} else {
-		lastSegment := segments[len(segments)-1]
-		baseName := filepath.Base(lastSegment)
-		parsedNum, ok := parseSegmentName(baseName)
-		if !ok {
-			return nil, ErrCorrupt
-		}
-		segmentNum = parsedNum
-
-		file, err = os.OpenFile(lastSegment, os.O_WRONLY|os.O_APPEND, 0o644)
-		if err != nil {
-			return nil, err
-		}
-
-		info, err := file.Stat()
-		if err != nil {
-			file.Close()
-			return nil, err
-		}
-		blockOffset = int(info.Size() % int64(BlockSize))
-	}
-
 	return &WAL{
-		dir:         dir,
-		opts:        options,
-		file:        file,
-		blockOffset: blockOffset,
-		curSegment:  segmentNum,
+		dir:        dir,
+		opts:       options,
+		file:       file,
+		writer:     newBlockWriter(file, blockOffset),
+		curSegment: segmentNum,
+		manager:    manager,
 	}, nil
 }
 
@@ -131,8 +97,8 @@ func (wal *WAL) Close(ctx context.Context) error {
 	}
 
 	if wal.file != nil {
-		if wal.blockOffset != 0 {
-			_ = wal.padBlock()
+		if wal.writer.Offset() != 0 {
+			_ = wal.writer.padBlock()
 		}
 		_ = wal.opts.Syncer.Sync(wal.file)
 		wal.file.Close()
