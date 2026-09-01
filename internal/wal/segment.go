@@ -90,7 +90,12 @@ func fsyncDir(dir string) error {
 	}
 	defer dirFile.Close()
 
-	return dirFile.Sync()
+	return syncFile(dirFile)
+}
+
+// syncFile can be swapped in tests to force a sync failure.
+var syncFile = func(file *os.File) error {
+	return file.Sync()
 }
 
 // openSegmentForAppend opens a segment for appending and fsyncs the dir.
