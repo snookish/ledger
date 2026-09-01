@@ -1,10 +1,13 @@
 package wal
 
-// DefaultSegmentSize is the size that triggers a new segment.
-const DefaultSegmentSize = 64 << 20 // 64MB
+const (
+	DefaultSegmentSize = 64 << 20          // DefaultSegmentSize is the size that triggers a new segment.
+	DefaultDir         = "/var/lib/ledger" // DefaultDir is the production default. Tests use t.TempDir()
+)
 
 // Options tune the WAL.
 type Options struct {
+	Dir         string // Dir holds the segment files.
 	SegmentSize int64  // SegmentSize is when we roll to a new file.
 	Syncer      Syncer // Syncer decides how we flush. Nil means fsync.
 }
@@ -12,37 +15,48 @@ type Options struct {
 // Option configures the WAL.
 type Option func(*Options)
 
+// WithDir sets the directory.
+func WithDir(dir string) Option {
+	return func(options *Options) {
+		options.Dir = dir
+	}
+}
+
 // WithSegmentSize sets the segment size.
-func WithSegmentSize(n int64) Option {
-	return func(o *Options) {
-		o.SegmentSize = n
+func WithSegmentSize(size int64) Option {
+	return func(options *Options) {
+		options.SegmentSize = size
 	}
 }
 
 // WithSyncer sets the syncer.
-func WithSyncer(s Syncer) Option {
-	return func(o *Options) {
-		o.Syncer = s
+func WithSyncer(syncer Syncer) Option {
+	return func(options *Options) {
+		options.Syncer = syncer
 	}
 }
 
 func defaultOptions() Options {
 	return Options{
+		Dir:         DefaultDir,
 		SegmentSize: DefaultSegmentSize,
 		Syncer:      defaultSyncer(),
 	}
 }
 
 func applyOptions(opts ...Option) Options {
-	o := defaultOptions()
+	options := defaultOptions()
 	for _, fn := range opts {
-		fn(&o)
+		fn(&options)
 	}
-	if o.SegmentSize <= 0 {
-		o.SegmentSize = DefaultSegmentSize
+	if options.Dir == "" {
+		options.Dir = DefaultDir
 	}
-	if o.Syncer == nil {
-		o.Syncer = defaultSyncer()
+	if options.SegmentSize <= 0 {
+		options.SegmentSize = DefaultSegmentSize
 	}
-	return o
+	if options.Syncer == nil {
+		options.Syncer = defaultSyncer()
+	}
+	return options
 }
