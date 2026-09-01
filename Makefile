@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help build run test test-unit cover lint fmt tidy vet
+.PHONY: help build run test test-unit cover bench demo lint fmt tidy vet
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -23,6 +23,12 @@ cover: ## Run tests and print coverage
 	go tool cover -func=coverage.out | tail -1
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "coverage report: coverage.html"
+
+bench: ## Run all benchmarks
+	go test -bench . -benchmem ./...
+
+demo: ## Build and run demo (via scripts/run.sh)
+	./scripts/run.sh
 
 lint: ## Run golangci-lint
 	golangci-lint run ./... 2>/dev/null || echo "hint: mise use golangci-lint"
