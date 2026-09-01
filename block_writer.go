@@ -21,6 +21,24 @@ func (writer *blockWriter) Reset(file *os.File, offset int) {
 	writer.offset = offset
 }
 
+// remaining is how many bytes are left in the current block.
+func (writer *blockWriter) remaining() int {
+	return BlockSize - writer.offset
+}
+
+// ensureHeaderSpace pads the tail if there is no room for a header.
+func (writer *blockWriter) ensureHeaderSpace() error {
+	if writer.remaining() < HeaderSize {
+		return writer.padBlock()
+	}
+	return nil
+}
+
+// availablePayload caps the payload to fit in the current block.
+func (writer *blockWriter) availablePayload() int {
+	return min(writer.remaining()-HeaderSize, MaxPayloadPerFragment)
+}
+
 // writeFragment writes one header + payload and moves the offset.
 func (writer *blockWriter) writeFragment(kind RecordKind, payload []byte) error {
 	header := EncodeHeader(len(payload), kind, payload)

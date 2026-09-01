@@ -7,6 +7,15 @@ func (wal *WAL) appendLocked(payload []byte) (uint64, error) {
 	lsn := wal.lsn
 
 	if len(payload) == 0 {
+		if err := wal.writer.ensureHeaderSpace(); err != nil {
+			return 0, err
+		}
+		if err := wal.maybeRotate(int64(HeaderSize)); err != nil {
+			return 0, err
+		}
+		if err := wal.writer.ensureHeaderSpace(); err != nil {
+			return 0, err
+		}
 		if err := wal.writer.writeFragment(KindFull, payload); err != nil {
 			return 0, err
 		}
@@ -17,27 +26,19 @@ func (wal *WAL) appendLocked(payload []byte) (uint64, error) {
 	isFirstFragment := true
 
 	for len(remainingPayload) > 0 {
-		blockLeft := BlockSize - wal.writer.Offset()
-		if blockLeft < HeaderSize {
-			if err := wal.writer.padBlock(); err != nil {
-				return 0, err
-			}
-			blockLeft = BlockSize
+		if err := wal.writer.ensureHeaderSpace(); err != nil {
+			return 0, err
 		}
 
 		if err := wal.maybeRotate(int64(len(remainingPayload) + HeaderSize)); err != nil {
 			return 0, err
 		}
 
-		blockLeft = BlockSize - wal.writer.Offset()
-		if blockLeft < HeaderSize {
-			if err := wal.writer.padBlock(); err != nil {
-				return 0, err
-			}
-			blockLeft = BlockSize
+		if err := wal.writer.ensureHeaderSpace(); err != nil {
+			return 0, err
 		}
 
-		chunkSize := min(blockLeft-HeaderSize, MaxPayloadPerFragment)
+		chunkSize := wal.writer.availablePayload()
 		if len(remainingPayload) <= chunkSize {
 			kind := wal.writer.chooseKind(isFirstFragment, len(payload), len(remainingPayload))
 			if err := wal.writer.writeFragment(kind, remainingPayload); err != nil {
