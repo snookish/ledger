@@ -39,6 +39,39 @@ func (manager *segmentManager) createNext() (*os.File, int, error) {
 	return file, nextNum, nil
 }
 
+// rotateIfNeeded checks size, pads, syncs, closes and creates next segment if needed.
+func (manager *segmentManager) rotateIfNeeded(currentFile *os.File, writer *blockWriter, syncer Syncer, segmentSize int64, needBytes int64) (*os.File, int, error) {
+	info, err := currentFile.Stat()
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if info.Size()+needBytes <= segmentSize {
+		return nil, 0, nil
+	}
+
+	if writer.Offset() != 0 {
+		if err := writer.padBlock(); err != nil {
+			return nil, 0, err
+		}
+	}
+
+	if err := syncer.Sync(currentFile); err != nil {
+		return nil, 0, err
+	}
+
+	if err := currentFile.Close(); err != nil {
+		return nil, 0, err
+	}
+
+	nextFile, nextNum, err := manager.createNext()
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return nextFile, nextNum, nil
+}
+
 // openLast opens the last segment for append and returns file, number, and block offset.
 func (manager *segmentManager) openLast() (*os.File, int, int, error) {
 	segments, err := manager.list()

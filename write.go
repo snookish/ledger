@@ -66,37 +66,17 @@ func (wal *WAL) appendLocked(payload []byte) (uint64, error) {
 
 // maybeRotate rolls to a new segment if the current one would get too big.
 func (wal *WAL) maybeRotate(needBytes int64) error {
-	info, err := wal.file.Stat()
+	nextFile, nextSegment, err := wal.manager.rotateIfNeeded(
+		wal.file, wal.writer, wal.opts.Syncer, wal.opts.SegmentSize, needBytes,
+	)
 	if err != nil {
 		return err
 	}
-
-	if info.Size()+needBytes <= wal.opts.SegmentSize {
+	if nextFile == nil {
 		return nil
 	}
-
-	if wal.writer.Offset() != 0 {
-		if err := wal.writer.padBlock(); err != nil {
-			return err
-		}
-	}
-
-	if err := wal.opts.Syncer.Sync(wal.file); err != nil {
-		return err
-	}
-
-	if err := wal.file.Close(); err != nil {
-		return err
-	}
-
-	nextFile, nextSegment, err := wal.manager.createNext()
-	if err != nil {
-		return err
-	}
-
 	wal.file = nextFile
 	wal.writer.Reset(nextFile, 0)
 	wal.curSegment = nextSegment
-
 	return nil
 }
