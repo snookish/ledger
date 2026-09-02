@@ -5,11 +5,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const (
-	DefaultSegmentSize = 64 << 20          // DefaultSegmentSize is the size that triggers a new segment.
-	DefaultDir         = "/var/lib/ledger" // DefaultDir is the production default. Tests use t.TempDir()
+	DefaultSegmentSize   = 64 << 20
+	DefaultDir           = "/var/lib/ledger"
+	DefaultBatchTimeout  = 5 * time.Millisecond
+	DefaultMaxBatchBytes = 64 * 1024
+	DefaultMaxBatchCount = 128
 )
 
 // ErrBadDir is returned when Dir is not a usable absolute directory.
@@ -17,9 +21,12 @@ var ErrBadDir = errors.New("ledger: bad dir")
 
 // Options tune the WAL.
 type Options struct {
-	Dir         string // Dir holds the segment files.
-	SegmentSize int64  // SegmentSize is when we roll to a new file.
-	Syncer      Syncer // Syncer decides how we flush. Nil means fsync.
+	Dir           string        // Dir holds the segment files.
+	SegmentSize   int64         // SegmentSize is when we roll to a new file.
+	Syncer        Syncer        // Syncer decides how we flush. Nil means fsync.
+	BatchTimeout  time.Duration // How long to wait for batch, 0 is per-write sync
+	MaxBatchBytes int           // Flush when batch bytes hit this
+	MaxBatchCount int           // Flush when batch count hits this
 }
 
 // Option configures the WAL.
@@ -46,11 +53,35 @@ func WithSyncer(syncer Syncer) Option {
 	}
 }
 
+// WithBatchTimeout sets how long to wait to fill a batch.
+func WithBatchTimeout(d time.Duration) Option {
+	return func(options *Options) {
+		options.BatchTimeout = d
+	}
+}
+
+// WithMaxBatchBytes sets the max bytes per batch.
+func WithMaxBatchBytes(n int) Option {
+	return func(options *Options) {
+		options.MaxBatchBytes = n
+	}
+}
+
+// WithMaxBatchCount sets the max records per batch.
+func WithMaxBatchCount(n int) Option {
+	return func(options *Options) {
+		options.MaxBatchCount = n
+	}
+}
+
 func defaultOptions() Options {
 	return Options{
-		Dir:         DefaultDir,
-		SegmentSize: DefaultSegmentSize,
-		Syncer:      defaultSyncer(),
+		Dir:           DefaultDir,
+		SegmentSize:   DefaultSegmentSize,
+		Syncer:        defaultSyncer(),
+		BatchTimeout:  DefaultBatchTimeout,
+		MaxBatchBytes: DefaultMaxBatchBytes,
+		MaxBatchCount: DefaultMaxBatchCount,
 	}
 }
 
@@ -90,14 +121,22 @@ func applyOptions(opts ...Option) Options {
 	for _, fn := range opts {
 		fn(&options)
 	}
-	// Dir == "" no longer falls back — Validate is the single
-	// source for Dir shape. WithDir("") now returns ErrBadDir
-	// instead of silently using DefaultDir (Locality).
+
 	if options.SegmentSize <= 0 {
 		options.SegmentSize = DefaultSegmentSize
 	}
+
 	if options.Syncer == nil {
 		options.Syncer = defaultSyncer()
 	}
+
+	if options.MaxBatchBytes <= 0 {
+		options.MaxBatchBytes = DefaultMaxBatchBytes
+	}
+
+	if options.MaxBatchCount <= 0 {
+		options.MaxBatchCount = DefaultMaxBatchCount
+	}
+
 	return options
 }
