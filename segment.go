@@ -88,7 +88,7 @@ func fsyncDir(dir string) error {
 	if err != nil {
 		return err
 	}
-	defer dirFile.Close()
+	defer func() { _ = dirFile.Close() }()
 
 	return syncFile(dirFile)
 }
@@ -109,7 +109,7 @@ func openSegmentForAppend(dir string, segmentNumber int) (*os.File, error) {
 	}
 
 	if err := fsyncDir(dir); err != nil {
-		file.Close()
+		_ = file.Close()
 		return nil, err
 	}
 

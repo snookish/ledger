@@ -24,6 +24,9 @@ type WAL struct {
 	curSegment int
 	lsn        uint64
 	closed     bool
+	reqCh      chan *appendReq
+	doneCh     chan struct{}
+	groupDone  chan struct{}
 }
 
 // Open creates or reopens the log. Dir defaults to /var/lib/ledger.
@@ -48,20 +51,53 @@ func Open(ctx context.Context, opts ...Option) (*WAL, error) {
 		return nil, err
 	}
 
-	return &WAL{
+	wal := &WAL{
 		dir:        dir,
 		opts:       options,
 		file:       file,
 		writer:     newBlockWriter(file, blockOffset),
 		curSegment: segmentNum,
 		manager:    manager,
-	}, nil
+	}
+
+	if options.BatchTimeout > 0 {
+		wal.reqCh = make(chan *appendReq, options.MaxBatchCount*2)
+		wal.doneCh = make(chan struct{})
+		wal.groupDone = make(chan struct{})
+		go wal.runGroupCommit()
+	}
+
+	return wal, nil
 }
 
 // Append adds one record and returns its LSN.
 func (wal *WAL) Append(ctx context.Context, payload []byte) (uint64, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err
+	}
+
+	if wal.reqCh != nil {
+		wal.mu.Lock()
+		closed := wal.closed
+		wal.mu.Unlock()
+		if closed {
+			return 0, ErrClosed
+		}
+		req := &appendReq{
+			payload: payload,
+			done:    make(chan *appendResult, 1),
+		}
+		select {
+		case wal.reqCh <- req:
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		}
+		select {
+		case res := <-req.done:
+			return res.lsn, res.err
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		}
 	}
 
 	wal.mu.Lock()
@@ -89,6 +125,31 @@ func (wal *WAL) Close(ctx context.Context) error {
 		return err
 	}
 
+	if wal.reqCh != nil {
+		close(wal.doneCh)
+		<-wal.groupDone
+		wal.mu.Lock()
+		defer wal.mu.Unlock()
+		if wal.closed {
+			return nil
+		}
+		wal.closed = true
+		if wal.file != nil {
+			if wal.writer.Offset() != 0 {
+				if err := wal.writer.padBlock(); err != nil {
+					return err
+				}
+			}
+			if err := wal.opts.Syncer.Sync(wal.file); err != nil {
+				return err
+			}
+			if err := wal.file.Close(); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
 	wal.mu.Lock()
 	defer wal.mu.Unlock()
 
@@ -96,14 +157,19 @@ func (wal *WAL) Close(ctx context.Context) error {
 		return nil
 	}
 
+	wal.closed = true
 	if wal.file != nil {
 		if wal.writer.Offset() != 0 {
-			_ = wal.writer.padBlock()
+			if err := wal.writer.padBlock(); err != nil {
+				return err
+			}
 		}
-		_ = wal.opts.Syncer.Sync(wal.file)
-		wal.file.Close()
+		if err := wal.opts.Syncer.Sync(wal.file); err != nil {
+			return err
+		}
+		if err := wal.file.Close(); err != nil {
+			return err
+		}
 	}
-
-	wal.closed = true
 	return nil
 }

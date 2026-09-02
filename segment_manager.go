@@ -101,7 +101,7 @@ func (manager *segmentManager) openLast() (*os.File, int, int, error) {
 
 	info, err := file.Stat()
 	if err != nil {
-		file.Close()
+		_ = file.Close()
 		return nil, 0, 0, err
 	}
 
