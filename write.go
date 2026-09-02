@@ -1,7 +1,6 @@
 package ledger
 
 // appendLocked writes the payload, splitting it across blocks if needed.
-// Caller must hold mu.
 func (wal *WAL) appendLocked(payload []byte) (uint64, error) {
 	wal.lsn++
 	lsn := wal.lsn
