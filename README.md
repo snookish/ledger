@@ -8,6 +8,12 @@ A small write-ahead log that stays correct after a crash. Every record goes to d
 - Records that don't fit are split into `Full / First / Middle / Last` and reassembled on read
 - Crash is handled by design: truncation at any byte leaves a prefix of valid records, the tail is dropped
 
+## Install
+
+```bash
+go get github.com/snookish/ledger
+```
+
 ## Quick start
 
 ```bash
