@@ -78,12 +78,17 @@ func (writer *blockWriter) padBlock() error {
 }
 
 // chooseKind picks Full, First, Middle, or Last for a chunk.
-func (writer *blockWriter) chooseKind(isFirst bool, totalLen, remainingLen int) RecordKind {
-	if isFirst && remainingLen == totalLen {
+// Unified behind the blockWriter Seam — caller gives isFirst/isLast,
+// writer owns the kind mapping for Locality.
+func (writer *blockWriter) chooseKind(isFirst bool, isLast bool) RecordKind {
+	switch {
+	case isFirst && isLast:
 		return KindFull
-	}
-	if isFirst {
+	case isFirst && !isLast:
 		return KindFirst
+	case !isFirst && isLast:
+		return KindLast
+	default:
+		return KindMiddle
 	}
-	return KindLast
 }

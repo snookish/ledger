@@ -1,9 +1,19 @@
 package ledger
 
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
 const (
 	DefaultSegmentSize = 64 << 20          // DefaultSegmentSize is the size that triggers a new segment.
 	DefaultDir         = "/var/lib/ledger" // DefaultDir is the production default. Tests use t.TempDir()
 )
+
+// ErrBadDir is returned when Dir is not a usable absolute directory.
+var ErrBadDir = errors.New("ledger: bad dir")
 
 // Options tune the WAL.
 type Options struct {
@@ -49,14 +59,40 @@ func (options Options) Validate() error {
 	return validateDir(options.Dir)
 }
 
+// validateDir checks the dir before we try to use it.
+func validateDir(dir string) error {
+	if strings.TrimSpace(dir) == "" {
+		return ErrBadDir
+	}
+
+	if strings.Contains(dir, "\x00") {
+		return ErrBadDir
+	}
+
+	cleaned := filepath.Clean(dir)
+	if cleaned == "." {
+		return ErrBadDir
+	}
+
+	if !filepath.IsAbs(cleaned) {
+		return ErrBadDir
+	}
+
+	if info, err := os.Stat(cleaned); err == nil && !info.IsDir() {
+		return ErrBadDir
+	}
+
+	return nil
+}
+
 func applyOptions(opts ...Option) Options {
 	options := defaultOptions()
 	for _, fn := range opts {
 		fn(&options)
 	}
-	if options.Dir == "" {
-		options.Dir = DefaultDir
-	}
+	// Dir == "" no longer falls back — Validate is the single
+	// source for Dir shape. WithDir("") now returns ErrBadDir
+	// instead of silently using DefaultDir (Locality).
 	if options.SegmentSize <= 0 {
 		options.SegmentSize = DefaultSegmentSize
 	}

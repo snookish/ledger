@@ -89,7 +89,10 @@ func (manager *segmentManager) openLast() (*os.File, int, int, error) {
 
 	lastSegment := segments[len(segments)-1]
 	baseName := filepath.Base(lastSegment)
-	segmentNum, _ := parseSegmentName(baseName)
+	segmentNum, ok := parseSegmentName(baseName)
+	if !ok {
+		return nil, 0, 0, ErrCorrupt
+	}
 
 	file, err := os.OpenFile(lastSegment, os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {

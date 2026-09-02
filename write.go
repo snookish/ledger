@@ -39,21 +39,16 @@ func (wal *WAL) appendLocked(payload []byte) (uint64, error) {
 		}
 
 		chunkSize := wal.writer.availablePayload()
-		if len(remainingPayload) <= chunkSize {
-			kind := wal.writer.chooseKind(isFirstFragment, len(payload), len(remainingPayload))
+		isLast := len(remainingPayload) <= chunkSize
+		kind := wal.writer.chooseKind(isFirstFragment, isLast)
+		if isLast {
 			if err := wal.writer.writeFragment(kind, remainingPayload); err != nil {
 				return 0, err
 			}
 			break
 		}
 
-		chunk := remainingPayload[:chunkSize]
-		kind := KindFirst
-		if !isFirstFragment {
-			kind = KindMiddle
-		}
-
-		if err := wal.writer.writeFragment(kind, chunk); err != nil {
+		if err := wal.writer.writeFragment(kind, remainingPayload[:chunkSize]); err != nil {
 			return 0, err
 		}
 
