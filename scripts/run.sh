@@ -5,23 +5,21 @@ log() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
 }
 
-log "Starting ledger demo"
+log "Starting ledger examples"
 
-log "Step 1: Building binary"
+log "Building examples"
 mkdir -p bin
-go build -o bin/demo ./cmd/demo
-log "Build done: bin/demo"
+go build -o bin/basic ./examples/basic
+go build -o bin/concurrent ./examples/concurrent
+go build -o bin/rotation ./examples/rotation
+go build -o bin/recovery ./examples/recovery
+log "Build done"
 
-log "Step 2: Running demo"
-LEDGER_DIR=/tmp/ledger-demo ./bin/demo
-log "Demo finished"
-
-log "Step 3: Listing segment files (main ledger)"
-ls -lh /tmp/ledger-demo 2>&1 | while read -r line; do log "$line"; done
-
-log "Step 4: Listing rotation segment files"
-ls -lh /tmp/ledger-demo-rotate 2>&1 | while read -r line; do log "$line"; done
+for ex in basic concurrent rotation recovery; do
+  log "Running $ex"
+  LEDGER_DIR=/tmp/ledger-$ex ./bin/$ex 2>&1 | while read -r line; do log "[$ex] $line"; done
+done
 
 log "Cleaning up"
-rm -rf /tmp/ledger-demo /tmp/ledger-demo-rotate
+rm -rf /tmp/ledger-basic /tmp/ledger-concurrent /tmp/ledger-rotation /tmp/ledger-recovery /tmp/ledger-demo* 2>/dev/null || true
 log "Done"
