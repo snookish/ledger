@@ -59,7 +59,9 @@ func main() {
 	if err := trimWal.TrimOldest(); err != nil {
 		log.Fatalf("trim failed: %v", err)
 	}
-	trimWal.Close(ctx)
+	if err := trimWal.Close(ctx); err != nil {
+		log.Fatalf("close trim wal failed: %v", err)
+	}
 
 	after, err := os.ReadDir(dir)
 	if err != nil {

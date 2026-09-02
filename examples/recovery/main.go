@@ -26,7 +26,9 @@ func main() {
 			log.Fatalf("append failed: %v", err)
 		}
 	}
-	wal.Close(ctx)
+	if err := wal.Close(ctx); err != nil {
+		log.Fatalf("close failed: %v", err)
+	}
 
 	// Simulate a crash that truncates the last record
 	path := filepath.Join(dir, "00000001.log")
@@ -39,7 +41,10 @@ func main() {
 	if err := os.Truncate(path, 23); err != nil {
 		log.Fatalf("truncate failed: %v", err)
 	}
-	truncData, _ := os.ReadFile(path)
+	truncData, err := os.ReadFile(path)
+	if err != nil {
+		log.Fatalf("read trunc failed: %v", err)
+	}
 	log.Printf("size after truncate %d", len(truncData))
 
 	reader := ledger.NewReader(dir)
@@ -53,15 +58,26 @@ func main() {
 	}
 
 	// Torn sector: flip a byte in the first record
-	_ = os.WriteFile(path, data, 0644)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		log.Fatalf("write for torn failed: %v", err)
+	}
 	file, err := os.OpenFile(path, os.O_RDWR, 0644)
 	if err != nil {
 		log.Fatalf("open for torn failed: %v", err)
 	}
-	_, _ = file.Seek(7, 0)
-	_, _ = file.Write([]byte("X"))
-	_ = file.Close()
+	if _, err := file.Seek(7, 0); err != nil {
+		log.Fatalf("seek failed: %v", err)
+	}
+	if _, err := file.Write([]byte("X")); err != nil {
+		log.Fatalf("write torn failed: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		log.Fatalf("close torn failed: %v", err)
+	}
 
-	out, _ = reader.ReadAll(ctx)
+	out, err = reader.ReadAll(ctx)
+	if err != nil {
+		log.Fatalf("read torn failed: %v", err)
+	}
 	log.Printf("after torn, recovered %d records (want 0)", len(out))
 }
