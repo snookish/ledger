@@ -111,10 +111,10 @@ func (reader *Reader) Replay(ctx context.Context, fn func([]byte) error) error {
 				payload := block[pos+HeaderSize : pos+HeaderSize+int(length)]
 
 				// Checksum is over kind and payload, so any torn write will not match
-				if reader.verify && !VerifyHeader(crc, kind, payload) {
-					return nil
-				}
-				if !reader.verify && !VerifyHeader(crc, kind, payload) {
+				if !VerifyHeader(crc, kind, payload) {
+					if reader.verify {
+						return nil
+					}
 					break posLoop
 				}
 

@@ -14,19 +14,9 @@ func newSegmentManager(dir string) *segmentManager {
 	return &segmentManager{dir: dir}
 }
 
-// list returns all segment paths sorted oldest first.
-func (manager *segmentManager) list() ([]string, error) {
-	return listSegments(manager.dir)
-}
-
-// nextNum returns the number for the next segment.
-func (manager *segmentManager) nextNum() (int, error) {
-	return nextSegmentNum(manager.dir)
-}
-
 // createNext makes the next segment, fsyncs the dir, and returns the file and number.
 func (manager *segmentManager) createNext() (*os.File, int, error) {
-	nextNum, err := manager.nextNum()
+	nextNum, err := nextSegmentNum(manager.dir)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -74,7 +64,7 @@ func (manager *segmentManager) rotateIfNeeded(currentFile *os.File, writer *bloc
 
 // openLast opens the last segment for append and returns file, number, and block offset.
 func (manager *segmentManager) openLast() (*os.File, int, int, error) {
-	segments, err := manager.list()
+	segments, err := listSegments(manager.dir)
 	if err != nil {
 		return nil, 0, 0, err
 	}

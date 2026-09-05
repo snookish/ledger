@@ -36,7 +36,7 @@ Say you call `Append(ctx, []byte("hello"))`:
 
 3. Now we know how much we can fit in the current block (`availablePayload`). If the payload fits, we pick `Full` (or `First`/`Last` if it was split before) and write one header plus payload. If it does not fit, we write `First`, then `Middle` pieces, then `Last`. Each piece gets its own `7` byte header with its own masked `CRC`.
 
-4. The header is `4` bytes masked `CRC32C` (little-endian) + `2` bytes length + `1` byte kind. The CRC is over `kind + payload` and masked as `((crc >> 15) | (crc << 17)) + 0xa282ead8` so a file of zeros never looks valid. The header goes first so a truncation mid-header is obvious — the reader sees a short header at the end and stops.
+4. The header is `4` bytes masked `CRC32C` (little-endian) + `2` bytes length + `1` byte kind. The CRC is over `kind + payload` and masked as `((crc >> 15) | (crc << 17)) + 0xa282ead8` so a file of zeros never looks valid. The header goes first so a truncation mid-header is obvious, the reader sees a short header at the end and stops.
 
 5. `Sync` is called. On Linux that is `fsync` or `fdatasync`, on Darwin it is `F_FULLFSYNC`. If the drive lies or `nobarrier` is set, this may only reach the kernel, but the tail will still be dropped on the next read — you lose the last unflushed records, you do not get a reordered log.
 
@@ -50,7 +50,7 @@ Say you call `Append(ctx, []byte("hello"))`:
 
 3. Fragments are stitched. `Full` goes straight to your callback. `First` starts a buffer, `Middle` appends, `Last` appends and then calls your callback with the whole reassembled record. An incomplete fragment at EOF is discarded.
 
-That is why a crash that truncates at any byte, or a torn `512B` sector, just means you get a shorter prefix — never a half record.
+That is why a crash that truncates at any byte, or a torn `512B` sector, just means you get a shorter prefix, never a half record.
 
 ## Where things can go wrong, and what we promise
 

@@ -71,30 +71,51 @@ func Open(ctx context.Context, opts ...Option) (*WAL, error) {
 }
 
 // Append adds one record and returns its LSN.
+//
+// When batching is enabled (BatchTimeout > 0) this takes the group-commit
+// path: the request is enqueued to runGroupCommit and shares one fsync with
+// other concurrent Appends. When batching is disabled it writes and syncs
+// directly. The enqueue is bounded (MaxBatchCount*2) so a slow batch does not
+// grow without limit.
 func (wal *WAL) Append(ctx context.Context, payload []byte) (uint64, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
 
 	if wal.reqCh != nil {
+		// Check closed before enqueue so we do not add work after Close
+		// has started shutting down the batch loop.
 		wal.mu.Lock()
-		closed := wal.closed
-		wal.mu.Unlock()
-		if closed {
+		if wal.closed {
+			wal.mu.Unlock()
 			return 0, ErrClosed
 		}
+		wal.mu.Unlock()
+
 		req := &appendReq{
 			payload: payload,
 			done:    make(chan *appendResult, 1),
 		}
+
+		// Wait for queue space, but also notice if Close shuts down the
+		// group loop or the caller cancels while queued.
 		select {
 		case wal.reqCh <- req:
+		case <-wal.doneCh:
+			return 0, ErrClosed
 		case <-ctx.Done():
 			return 0, ctx.Err()
 		}
+
+		// Wait for the batch leader to write and sync. If Close wins
+		// the race we return ErrClosed; if ctx is canceled we return
+		// ctx.Err(). In either case the payload may still be flushed
+		// after we return because it is already enqueued.
 		select {
 		case res := <-req.done:
 			return res.lsn, res.err
+		case <-wal.doneCh:
+			return 0, ErrClosed
 		case <-ctx.Done():
 			return 0, ctx.Err()
 		}
@@ -128,26 +149,6 @@ func (wal *WAL) Close(ctx context.Context) error {
 	if wal.reqCh != nil {
 		close(wal.doneCh)
 		<-wal.groupDone
-		wal.mu.Lock()
-		defer wal.mu.Unlock()
-		if wal.closed {
-			return nil
-		}
-		wal.closed = true
-		if wal.file != nil {
-			if wal.writer.Offset() != 0 {
-				if err := wal.writer.padBlock(); err != nil {
-					return err
-				}
-			}
-			if err := wal.opts.Syncer.Sync(wal.file); err != nil {
-				return err
-			}
-			if err := wal.file.Close(); err != nil {
-				return err
-			}
-		}
-		return nil
 	}
 
 	wal.mu.Lock()
@@ -158,18 +159,20 @@ func (wal *WAL) Close(ctx context.Context) error {
 	}
 
 	wal.closed = true
-	if wal.file != nil {
-		if wal.writer.Offset() != 0 {
-			if err := wal.writer.padBlock(); err != nil {
-				return err
-			}
-		}
-		if err := wal.opts.Syncer.Sync(wal.file); err != nil {
-			return err
-		}
-		if err := wal.file.Close(); err != nil {
+	return wal.closeLocked()
+}
+
+func (wal *WAL) closeLocked() error {
+	if wal.file == nil {
+		return nil
+	}
+	if wal.writer.Offset() != 0 {
+		if err := wal.writer.padBlock(); err != nil {
 			return err
 		}
 	}
-	return nil
+	if err := wal.opts.Syncer.Sync(wal.file); err != nil {
+		return err
+	}
+	return wal.file.Close()
 }

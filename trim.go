@@ -8,7 +8,7 @@ func (wal *WAL) TrimOldest() error {
 	wal.mu.Lock()
 	defer wal.mu.Unlock()
 
-	segments, err := wal.manager.list()
+	segments, err := listSegments(wal.dir)
 	if err != nil {
 		return err
 	}

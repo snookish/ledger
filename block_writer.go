@@ -61,6 +61,8 @@ func (writer *blockWriter) writeFragment(kind RecordKind, payload []byte) error 
 	return nil
 }
 
+var zeroBlock [BlockSize]byte
+
 // padBlock fills the rest of the block with zeros.
 func (writer *blockWriter) padBlock() error {
 	left := BlockSize - writer.offset
@@ -68,8 +70,7 @@ func (writer *blockWriter) padBlock() error {
 		return nil
 	}
 
-	zeros := make([]byte, left)
-	if _, err := writer.file.Write(zeros); err != nil {
+	if _, err := writer.file.Write(zeroBlock[:left]); err != nil {
 		return err
 	}
 
