@@ -5,14 +5,11 @@ import (
 	"hash/crc32"
 )
 
-// BlockSize is one block in the log file. Records never cross blocks.
-const BlockSize = 32768
-
-// HeaderSize is the header before each fragment.
-const HeaderSize = 7
-
-// MaxPayloadPerFragment is the biggest payload that fits in one fragment.
-const MaxPayloadPerFragment = BlockSize - HeaderSize
+const (
+	BlockSize          = 32768                  // BlockSize is one block in the log file. Records never cross blocks.
+	HeaderSize         = 7                      // HeaderSize is the header before each fragment.
+	MaxPayloadPerBlock = BlockSize - HeaderSize // MaxPayloadPerBlock is the biggest payload that fits in one block.
+)
 
 // RecordKind is the kind of a fragment.
 type RecordKind uint8
@@ -74,44 +71,4 @@ func DecodeHeader(b []byte) (crc uint32, length uint16, kind RecordKind, ok bool
 func VerifyHeader(crc uint32, kind RecordKind, payload []byte) bool {
 	expected := calcCRC(kind, payload)
 	return expected == crc
-}
-
-// NeedsFragment says if the payload must be split to fit.
-func NeedsFragment(blockRemaining, payloadLen int) bool {
-	if payloadLen > MaxPayloadPerFragment {
-		return true
-	}
-	return blockRemaining < HeaderSize+payloadLen
-}
-
-// FragmentCount counts how many fragments a record will need.
-func FragmentCount(payloadLen int, blockRemaining int) int {
-	if payloadLen == 0 {
-		return 1
-	}
-
-	var count int
-	remaining := payloadLen
-	firstSpace := max(blockRemaining-HeaderSize, 0)
-
-	// Use what is left in the current block first.
-	if firstSpace > 0 {
-		if remaining <= firstSpace {
-			return 1
-		}
-		remaining -= firstSpace
-		count++
-	}
-
-	// Remaining pieces each fill a full block.
-	for remaining > 0 {
-		if remaining <= MaxPayloadPerFragment {
-			count++
-			break
-		}
-		remaining -= MaxPayloadPerFragment
-		count++
-	}
-
-	return count
 }

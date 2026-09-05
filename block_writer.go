@@ -36,7 +36,7 @@ func (writer *blockWriter) ensureHeaderSpace() error {
 
 // availablePayload caps the payload to fit in the current block.
 func (writer *blockWriter) availablePayload() int {
-	return min(writer.remaining()-HeaderSize, MaxPayloadPerFragment)
+	return min(writer.remaining()-HeaderSize, MaxPayloadPerBlock)
 }
 
 // writeFragment writes one header + payload and moves the offset.

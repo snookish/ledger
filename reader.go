@@ -64,18 +64,18 @@ func (reader *Reader) Replay(ctx context.Context, fn func([]byte) error) error {
 			}
 			blockEnd := min(blockStart+BlockSize, len(data))
 			block := data[blockStart:blockEnd]
-			pos := 0
+			nextRecordPosInBlock := 0
 
-		posLoop:
-			for pos+HeaderSize <= len(block) {
-				headerBytes := block[pos : pos+HeaderSize]
+		nextBlockPosLoop:
+			for nextRecordPosInBlock+HeaderSize <= len(block) {
+				headerBytes := block[nextRecordPosInBlock : nextRecordPosInBlock+HeaderSize]
 
 				// Rest of the block is just zeros, nothing more here
 				isZeroHeader := headerBytes[0] == 0 && headerBytes[1] == 0 &&
 					headerBytes[2] == 0 && headerBytes[3] == 0 &&
 					headerBytes[4] == 0 && headerBytes[5] == 0 && headerBytes[6] == 0
 				if isZeroHeader {
-					break posLoop
+					break nextBlockPosLoop
 				}
 
 				crc, length, kind, ok := DecodeHeader(headerBytes)
@@ -90,32 +90,32 @@ func (reader *Reader) Replay(ctx context.Context, fn func([]byte) error) error {
 					// Good, we know how to handle it
 				case KindZero:
 					// Just padding at the end of a block
-					break posLoop
+					break nextBlockPosLoop
 				default:
 					// We have never seen this kind before, log is broken here
 					if reader.verify {
 						return nil
 					}
-					break posLoop
+					break nextBlockPosLoop
 				}
 
 				// Payload should fit comfortably in what is left of the block
-				if int(length) > len(block)-pos-HeaderSize {
+				if int(length) > len(block)-nextRecordPosInBlock-HeaderSize {
 					// File was cut off or torn in the middle of a record
 					if reader.verify {
 						return nil
 					}
-					break posLoop
+					break nextBlockPosLoop
 				}
 
-				payload := block[pos+HeaderSize : pos+HeaderSize+int(length)]
+				payload := block[nextRecordPosInBlock+HeaderSize : nextRecordPosInBlock+HeaderSize+int(length)]
 
 				// Checksum is over kind and payload, so any torn write will not match
 				if !VerifyHeader(crc, kind, payload) {
 					if reader.verify {
 						return nil
 					}
-					break posLoop
+					break nextBlockPosLoop
 				}
 
 				// Now we stitch the pieces of a big record back together
@@ -142,7 +142,7 @@ func (reader *Reader) Replay(ctx context.Context, fn func([]byte) error) error {
 					case !fragActive && reader.verify:
 						return nil
 					case !fragActive:
-						break posLoop
+						break nextBlockPosLoop
 					default:
 						fragBuffer = append(fragBuffer, payload...)
 					}
@@ -151,7 +151,7 @@ func (reader *Reader) Replay(ctx context.Context, fn func([]byte) error) error {
 					case !fragActive && reader.verify:
 						return nil
 					case !fragActive:
-						break posLoop
+						break nextBlockPosLoop
 					default:
 						fragBuffer = append(fragBuffer, payload...)
 						complete := fragBuffer
@@ -163,7 +163,7 @@ func (reader *Reader) Replay(ctx context.Context, fn func([]byte) error) error {
 					}
 				}
 
-				pos += HeaderSize + int(length)
+				nextRecordPosInBlock += HeaderSize + int(length)
 			}
 		}
 	}
